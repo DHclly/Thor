@@ -20,11 +20,7 @@ namespace Thor.Qiansail.Extensions
             ThorGlobal.PlatformNames.Add(QiansailPlatformOptions.PlatformName, QiansailPlatformOptions.PlatformCode);
 
             // 添加平台支持模型列表
-            ThorGlobal.ModelNames.Add(QiansailPlatformOptions.PlatformCode, [
-                "qwen-plus",
-                "qwen-max",
-                "qwen-turbo",
-            ]);
+            ThorGlobal.ModelInfos.Add(QiansailPlatformOptions.PlatformCode,QiansailPlatformOptions.ModeInfoDict.Values.ToList());
 
             services.AddKeyedSingleton<IThorChatCompletionsService, QiansailChatCompletionsService>(QiansailPlatformOptions.PlatformCode);
             services.AddKeyedSingleton<IThorTextEmbeddingService, QiansailTextEmbeddingService>(QiansailPlatformOptions

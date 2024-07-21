@@ -18,8 +18,7 @@ public static class SparkDeskServiceCollectionExtensions
         ThorGlobal.PlatformNames.Add(SparkDeskPlatformOptions.PlatformName, SparkDeskPlatformOptions.PlatformCode);
 
         // 添加平台支持模型列表
-        var modelNames = SparkDeskModelHelper.ModeInfoDict.Values.Select(x => x.Name).Order().ToList();
-        ThorGlobal.ModelNames.Add(SparkDeskPlatformOptions.PlatformCode, modelNames);
+        ThorGlobal.ModelInfos.Add(SparkDeskPlatformOptions.PlatformCode, SparkDeskPlatformOptions.ModeInfoDict.Values.ToList());
 
         services.AddKeyedSingleton<IThorChatCompletionsService, SparkDeskChatCompletionsService>(SparkDeskPlatformOptions.PlatformCode);
 

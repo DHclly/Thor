@@ -9,18 +9,6 @@ namespace Thor.SparkDesk.Helpers
     public class SparkDeskModelHelper
     {
         /// <summary>
-        /// 模型信息字典,key：模型编码，value：模型信息
-        /// </summary>
-        public static Dictionary<string, ThorModelInfo> ModeInfoDict = new()
-        {
-            ["general"] = new ThorModelInfo() { Name = "SparkDesk-Lite", Code = "general", Type = "chat" },
-            //generalv2 不可用，报错
-            ["generalv3"] = new ThorModelInfo() { Name = "SparkDesk-Pro", Code = "generalv3", Type = "chat" },
-            ["generalv3.5"] = new ThorModelInfo() { Name = "SparkDesk-Max", Code = "generalv3.5", Type = "chat" },
-            ["4.0Ultra"] = new ThorModelInfo() { Name = "SparkDesk-Ultra", Code = "4.0Ultra", Type = "chat" },
-        };
-
-        /// <summary>
         /// 模型名称映射，兼容现有名称
         /// </summary>
         public static Dictionary<string, string> ModelNameMap = new()
@@ -54,9 +42,9 @@ namespace Thor.SparkDesk.Helpers
                 modelId = ModelNameMap[modelId];
             }
 
-            if (ModeInfoDict.ContainsKey(modelId))
+            if (SparkDeskPlatformOptions.ModeInfoDict.ContainsKey(modelId))
             {
-                var info = ModeInfoDict[modelId];
+                var info = SparkDeskPlatformOptions.ModeInfoDict[modelId];
                 if (info.Type == modelType)
                 {
                     return info.Code;

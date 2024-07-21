@@ -19,11 +19,7 @@ public static class OllamaServiceCollectionExtensions
         ThorGlobal.PlatformNames.Add(OllamaPlatformOptions.PlatformName, OllamaPlatformOptions.PlatformCode);
 
         // 添加平台支持模型列表
-        ThorGlobal.ModelNames.Add(OllamaPlatformOptions.PlatformCode, [
-            "llama2:latest",
-            "llama3:latest",
-            "qwen:4b",
-        ]);
+        ThorGlobal.ModelInfos.Add(OllamaPlatformOptions.PlatformCode, OllamaPlatformOptions.ModeInfoDict.Values.ToList());
 
         // 基于平台码注册服务
         services.AddKeyedSingleton<IThorChatCompletionsService, OllamaChatCompletionsService>(OllamaPlatformOptions.PlatformCode);

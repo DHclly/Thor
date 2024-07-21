@@ -21,13 +21,7 @@ public static class HunyuanServiceCollectionExtensions
         ThorGlobal.PlatformNames.Add(HunyuanPlatformOptions.PlatformName, HunyuanPlatformOptions.PlatformCode);
 
         // 添加平台支持模型列表
-        ThorGlobal.ModelNames.Add(HunyuanPlatformOptions.PlatformCode, [
-            "hunyuan-lite",
-            "hunyuan-standard",
-            "hunyuan-pro",
-            "hunyuan-role",
-            "hunyuan-code"
-        ]);
+        ThorGlobal.ModelInfos.Add(HunyuanPlatformOptions.PlatformCode,HunyuanPlatformOptions.ModeInfoDict.Values.ToList());
 
         services.AddKeyedSingleton<IThorChatCompletionsService, HunyuanChatCompletionsService>(HunyuanPlatformOptions.PlatformCode);
 

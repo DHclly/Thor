@@ -24,11 +24,7 @@ public static class MoonshotServiceCollectionExtensions
     {
         ThorGlobal.PlatformNames.Add(MoonshotPlatformOptions.PlatformName, MoonshotPlatformOptions.PlatformCode);
 
-        ThorGlobal.ModelNames.Add(MoonshotPlatformOptions.PlatformCode, [
-            "moonshot-v1-8k",
-            "moonshot-v1-32k",
-            "moonshot-v1-128k",
-        ]);
+        ThorGlobal.ModelInfos.Add(MoonshotPlatformOptions.PlatformCode, MoonshotPlatformOptions.ModeInfoDict.Values.ToList());
 
         services.AddKeyedSingleton<IThorChatCompletionsService, MoonshotChatCompletionsService>(MoonshotPlatformOptions.PlatformCode);
 
