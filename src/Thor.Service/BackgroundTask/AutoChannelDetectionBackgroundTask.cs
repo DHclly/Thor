@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Thor.Core.DataAccess;
 using Thor.Service.DataAccess;
 using Thor.Service.Domain;
 using Thor.Service.Exceptions;
@@ -12,39 +13,59 @@ public sealed class AutoChannelDetectionBackgroundTask(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            var autoDisable = SettingService.GetBoolSetting(SettingExtensions.GeneralSetting.AutoDisableChannel);
-            var interval = SettingService.GetIntSetting(SettingExtensions.GeneralSetting.CheckInterval);
-            if (interval <= 0)
+            // 获取环境变量是否启用自动检测通道
+            var autoChannelDetection = Environment.GetEnvironmentVariable("AutoChannelDetection");
+
+            if (autoChannelDetection?.ToLower() == "false")
             {
-                interval = 60;
+                logger.LogInformation("AutoChannelDetectionBackgroundTask: AutoChannelDetection is not enabled");
+                return;
             }
 
-            logger.LogInformation(
-                $"AutoChannelDetectionBackgroundTask: AutoDisable: {autoDisable}, Interval: {interval}");
+            // 启动一分钟后开始执行，防止卡住启动
+            await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
 
-            await Task.Factory.StartNew(() => AutoHandleExceptionChannelAsync(stoppingToken), stoppingToken);
+            await Task.Factory.StartNew(() => AutoHandleExceptionChannelAsync(stoppingToken), stoppingToken,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
-            if (autoDisable)
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await using var scope = serviceProvider.CreateAsyncScope();
-                var dbContext = scope.ServiceProvider.GetRequiredService<AIDotNetDbContext>();
-                var channelService = scope.ServiceProvider.GetRequiredService<ChannelService>();
-                // 自动关闭通道
-                // 1. 获取启动自动检测通道
-                var channels = await dbContext.Channels.Where(x => x.ControlAutomatically && x.Disable == false)
-                    .ToListAsync(cancellationToken: stoppingToken);
-
-                // 2. 对于获取的渠道进行检测
-                foreach (var channel in channels)
+                var autoDisable = SettingService.GetBoolSetting(SettingExtensions.GeneralSetting.AutoDisableChannel);
+                var interval = SettingService.GetIntSetting(SettingExtensions.GeneralSetting.CheckInterval);
+                if (interval <= 0)
                 {
-                    await TestChannelAsync(channel, channelService, dbContext);
+                    interval = 60;
                 }
-            }
 
-            // 默认单位（分钟）
-            await Task.Delay((1000 * 60) * interval, stoppingToken);
+                logger.LogInformation(
+                    $"AutoChannelDetectionBackgroundTask: AutoDisable: {autoDisable}, Interval: {interval}");
+
+                if (autoDisable)
+                {
+                    await using var scope = serviceProvider.CreateAsyncScope();
+                    var dbContext = scope.ServiceProvider.GetRequiredService<IThorContext>();
+                    var channelService = scope.ServiceProvider.GetRequiredService<ChannelService>();
+                    // 自动关闭通道
+                    // 1. 获取启动自动检测通道
+                    var channels = await dbContext.Channels.Where(x => x.ControlAutomatically && x.Disable == false)
+                        .ToListAsync(cancellationToken: stoppingToken);
+
+                    // 2. 对于获取的渠道进行检测
+                    foreach (var channel in channels)
+                    {
+                        await TestChannelAsync(channel, channelService, dbContext).ConfigureAwait(false);
+                    }
+                }
+
+                // 默认单位（分钟）
+                await Task.Delay((1000 * 60) * interval, stoppingToken);
+            }
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, $"AutoChannelDetectionBackgroundTask Error: {e.Message}");
         }
     }
 
@@ -54,16 +75,17 @@ public sealed class AutoChannelDetectionBackgroundTask(
     private async Task AutoHandleExceptionChannelAsync(CancellationToken stoppingToken)
     {
         await using var scope = serviceProvider.CreateAsyncScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<AIDotNetDbContext>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<IThorContext>();
         var channelService = scope.ServiceProvider.GetRequiredService<ChannelService>();
         while (stoppingToken.IsCancellationRequested == false)
         {
-            // 对于异常通道，每10秒检测一次，以便渠道快速恢复。
+            // 对于异常通道，每15秒检测一次，以便渠道快速恢复。
             await Task.Delay((15000), stoppingToken);
 
             try
             {
                 foreach (var channel in await dbContext.Channels
+                             .AsNoTracking()
                              .Where(x => x.ControlAutomatically && x.Disable)
                              .ToArrayAsync(cancellationToken: stoppingToken))
                 {
@@ -77,7 +99,7 @@ public sealed class AutoChannelDetectionBackgroundTask(
         }
     }
 
-    private async Task TestChannelAsync(ChatChannel channel, ChannelService channelService, AIDotNetDbContext dbContext)
+    private async Task TestChannelAsync(ChatChannel channel, ChannelService channelService, IThorContext dbContext)
     {
         try
         {
@@ -86,7 +108,6 @@ public sealed class AutoChannelDetectionBackgroundTask(
             // 如果检测成功并且通道未关闭则更新状态
             if (succeed)
             {
-                logger.LogWarning($"AutoChannelDetectionBackgroundTask: Channel {channel.Id} is succeed.");
                 await dbContext.Channels.Where(x => x.Id == channel.Id)
                     .ExecuteUpdateAsync(item => item.SetProperty(x => x.Disable, false));
             }

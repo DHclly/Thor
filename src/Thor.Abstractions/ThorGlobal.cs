@@ -1,11 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Thor.Abstractions.Dtos;
-
-namespace Thor.Abstractions
+﻿namespace Thor.Abstractions
 {
     /// <summary>
     /// 全局对象挂载
@@ -22,6 +15,6 @@ namespace Thor.Abstractions
         /// 每个平台支持的模型列表,key:平台编码,value:模型名称列表
         /// </summary>
         /// <example>如：key:Qiansail,value:Qwen-Max</example>
-        public static Dictionary<string, List<ThorModelInfo>> ModelInfos { get; } = new();
+        public static Dictionary<string, List<string>> ModelNames { get; } = new();
     }
 }

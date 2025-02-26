@@ -1,4 +1,5 @@
-﻿using Thor.Service.Domain.Core;
+﻿using Thor.Infrastructure;
+using Thor.Service.Domain.Core;
 using Thor.Service.Infrastructure;
 
 namespace Thor.Service.Service;
@@ -7,7 +8,7 @@ public class RedeemCodeService(
     IServiceProvider serviceProvider,
     LoggerService loggerService,
     UserService userService)
-    : ApplicationService(serviceProvider)
+    : ApplicationService(serviceProvider),IScopeDependency
 {
     public async Task<IEnumerable<string>> CreateAsync(RedeemCodeInput input)
     {

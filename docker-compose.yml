@@ -1,8 +1,8 @@
 ﻿version: '3.8'
 
 services:
-  ai-dotnet-api-service:
-    image: registry.token-ai.cn/thor:latest
+  thor:
+    image: aidotnet/thor:latest
     ports:
       - 18080:8080
     build:
@@ -11,10 +11,6 @@ services:
     container_name: thor
     volumes:
       - ./data:/data
+      - ./Logs:/app/Logs
     environment:
       - TZ=Asia/Shanghai
-      - DBType=sqlite # sqlite | [postgresql,pgsql] | [sqlserver,mssql] | mysql
-      - ConnectionString=data source=/data/token.db
-      - LoggerConnectionString=data source=/data/logger.db
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_PORTS=8080

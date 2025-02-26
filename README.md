@@ -71,6 +71,10 @@ Thor(雷神托尔)提供了丰富的功能：
 
 Thor(雷神托尔)还支持多种数据库，包括SqlServer、PostgreSql、Sqlite以及MySql，用户可以根据自己的需要选择合适的数据库。
 
+清晰的数据统计
+
+![image](https://github.com/user-attachments/assets/eb508d89-6834-4064-95c2-937c939ddbd7)
+
 ## 功能实现
 
 - [x] 支持用户管理
@@ -81,19 +85,26 @@ Thor(雷神托尔)还支持多种数据库，包括SqlServer、PostgreSql、Sqli
 - [x] 支持系统设置
 - [x] 支持接入外部Chat链接
 - [x] 支持支付宝购买账号余额
+- [x] 支持Rabbit消费日志（默认情况下使用本地事件）
+- [x] 支持分布式多级缓存 
 
 # AI大模型支持列表
 
 - [x] OpenAI （支持function）
 - [x] Kimi（月之暗面）（支持function）
 - [x] 星火大模型（支持function）
-- [x] Claudia (非Stream支持function)
+- [x] Claudia （支持function）
 - [x] 智谱AI (支持function)
 - [x] AzureOpenAI（支持function）
-- [x] Ollama
-- [x] 通义千问（阿里云）
+- [x] Ollama（支持function）
+- [x] 通义千问（阿里云）（支持function）
 - [x] 腾讯混元大模型
 - [x] 支持百度大模型(ErnieBot)
+- [x] Gitee AI (支持function)
+- [x] MiniMax AI（支持function）
+- [x] SiliconFlow AI（支持function）
+- [x] DeepSeek AI（支持function）
+- [x] 火山引擎 （支持function） 
 
 # 支持数据库
 
@@ -101,6 +112,7 @@ Thor(雷神托尔)还支持多种数据库，包括SqlServer、PostgreSql、Sqli
 - [x] PostgreSql 配置类型[postgresql,pgsql]
 - [x] Sqlite 配置类型[sqlite,默认]
 - [x] MySql 配置类型[mysql]
+- [x] 达梦数据库 配置类型[dm]
 
 修改`appsettings.json`的`ConnectionStrings:DBType`配置项即可切换数据库类型。请注意切换数据库不会迁移数据。
 
@@ -122,18 +134,24 @@ admin admin
 ### 注意事项
 需要注意的是，如果克隆项目后，项目根目录缺少`data`时，需要手动创建，`docker compose up` 时，需要挂载本地目录`data`。
 
+### **国内用户请切换registry.cn-shenzhen.aliyuncs.com/tokengo/thor镜像**
+
 ### 环境变量
 
 - DBType
   sqlite | [postgresql,pgsql] | [sqlserver,mssql] | mysql
-- ConnectionString
+- ConnectionStrings:DefaultConnection
   主数据库连接字符串
-- LoggerConnectionString
+- ConnectionStrings:LoggerConnection
   日志数据连接字符串
 - CACHE_TYPE
   缓存类型 Memory|Redis
 - CACHE_CONNECTION_STRING
   缓存连接字符串 如果是Redis则为Redis连接字符串，Memory则为空
+- HttpClientPoolSize
+  HttpClient连接池大小
+- RunMigrationsAtStartup
+  是否在启动时运行迁移 如果是首次启动则需要设置为true
 
 使用`docker compose`启动服务：
 
@@ -141,25 +159,25 @@ admin admin
 version: '3.8'
 
 services:
-  ai-dotnet-api-service:
-    image: hejiale010426/ai-dotnet-api-service:latest
+  thor:
+    image: aidotnet/thor:latest
     ports:
       - 18080:8080
-    container_name: ai-dotnet-api-service
+    container_name: thor
     volumes:
       - ./data:/data
     environment:
       - TZ=Asia/Shanghai
-      - Theme=lobe
       - DBType=sqlite # sqlite | [postgresql,pgsql] | [sqlserver,mssql] | mysql
-      - ConnectionString=data source=/data/token.db
-      - LoggerConnectionString=data source=/data/logger.db
+      - ConnectionStrings:DefaultConnection=data source=/data/token.db
+      - ConnectionStrings:LoggerConnection=data source=/data/logger.db
+      - RunMigrationsAtStartup=true
 ```
 
 使用docker run启动服务
 
 ```sh
-docker run -d -p 18080:8080 --name ai-dotnet-api-service --network=gateway -v $PWD/data:/data -e Theme=lobe -e TZ=Asia/Shanghai -e DBType=sqlite -e ConnectionString="data source=/data/token.db" -e LoggerConnectionString="data source=/data/logger.db" hejiale010426/ai-dotnet-api-service:latest
+docker run -d -p 18080:8080 --name thor --network=gateway -v $PWD/data:/data -e Theme=lobe -e TZ=Asia/Shanghai -e DBType=sqlite -e ConnectionStrings:ConnectionString="data source=/data/token.db" -e RunMigrationsAtStartup=true -e ConnectionStrings:LoggerConnectionString="data source=/data/logger.db" aidotnet/thor:latest
 ```
 
 ### Sqlite构建
@@ -171,19 +189,19 @@ docker run -d -p 18080:8080 --name ai-dotnet-api-service --network=gateway -v $P
 version: '3.8'
 
 services:
-  ai-dotnet-api-service:
-    image: hejiale010426/ai-dotnet-api-service:latest
-    container_name: ai-dotnet-api-service
+  thor:
+    image: aidotnet/thor:latest
+    container_name: thor
     ports:
       - 18080:8080
     volumes:
       - ./data:/data
     environment:
       - TZ=Asia/Shanghai
-      - Theme=lobe
       - DBType=sqlite
-      - ConnectionString=data source=/data/token.db
-      - LoggerConnectionString=data source=/data/logger.db
+      - ConnectionStrings:DefaultConnection=data source=/data/token.db
+      - ConnectionStrings:LoggerConnection=data source=/data/logger.db
+      - RunMigrationsAtStartup=true
 ```
 执行如下命令打包镜像
 ```shell
@@ -200,7 +218,7 @@ sudo docker compose up -d
 docker run版本
 
 ```shell
-docker run -d -p 18080:8080 --name ai-dotnet-api-service -v $(pwd)/data:/data -e Theme=lobe -e TZ=Asia/Shanghai -e DBType=sqlite -e ConnectionString=data source=/data/token.db -e LoggerConnectionString=data source=/data/logger.db hejiale010426/ai-dotnet-api-service:latest
+docker run -d -p 18080:8080 --name ai-dotnet-api-service -v $(pwd)/data:/data -e RunMigrationsAtStartup=true  -e Theme=lobe -e TZ=Asia/Shanghai -e DBType=sqlite -e ConnectionStrings:DefaultConnection=data source=/data/token.db -e ConnectionStrings:LoggerConnection=data source=/data/logger.db aidotnet/thor:latest
 ```
 
 然后访问 http://localhost:18080 即可看到服务启动成功。
@@ -214,9 +232,9 @@ docker run -d -p 18080:8080 --name ai-dotnet-api-service -v $(pwd)/data:/data -e
 version: '3.8'
 
 services:
-  ai-dotnet-api-service:
-    image: hejiale010426/ai-dotnet-api-service:latest
-    container_name: ai-dotnet-api-service
+  thor:
+    image: aidotnet/thor:latest
+    container_name: thor
     ports:
       - 18080:8080
     volumes:
@@ -224,9 +242,9 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - DBType=postgresql
-      - Theme=lobe
-      - "ConnectionString=Host=127.0.0.1;Port=5432;Database=token;Username=token;Password=dd666666"
-      - "ConnectionString=Host=127.0.0.1;Port=5432;Database=logger;Username=token;Password=dd666666"
+      - ConnectionStrings:DefaultConnection=Host=127.0.0.1;Port=5432;Database=token;Username=token;Password=dd666666
+      - ConnectionStrings:LoggerConnection=Host=127.0.0.1;Port=5432;Database=logger;Username=token;Password=dd666666
+      - RunMigrationsAtStartup=true
 ```
 
 执行如下命令打包镜像
@@ -244,15 +262,15 @@ docker run版本
 
 ```shell
 docker run -d \
-  --name ai-dotnet-api-service \
+  --name thor \
   -p 18080:8080 \
   -v $(pwd)/data:/data \
   -e TZ=Asia/Shanghai \
   -e DBType=postgresql \
-  -e Theme=lobe \
-  -e "ConnectionString=Host=127.0.0.1;Port=5432;Database=token;Username=token;Password=dd666666" \
-  -e "ConnectionString=Host=127.0.0.1;Port=5432;Database=logger;Username=token;Password=dd666666" \
-  hejiale010426/ai-dotnet-api-service:latest
+  -e RunMigrationsAtStartup=true \
+  -e ConnectionStrings:DefaultConnection=Host=127.0.0.1;Port=5432;Database=token;Username=token;Password=dd666666 \
+  -e ConnectionStrings:LoggerConnection=Host=127.0.0.1;Port=5432;Database=logger;Username=token;Password=dd666666 \
+  aidotnet/thor:latest
 ```
 
 然后访问 http://localhost:18080 即可看到服务启动成功。
@@ -266,9 +284,9 @@ docker run -d \
 version: '3.8'
 
 services:
-  ai-dotnet-api-service:
-    image: hejiale010426/ai-dotnet-api-service:latest
-    container_name: ai-dotnet-api-service
+  thor:
+    image: aidotnet/thor:latest
+    container_name: thor
     ports:
       - 18080:8080
     volumes:
@@ -276,9 +294,9 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - DBType=sqlserver
-      - Theme=lobe
-      - "ConnectionString=Server=127.0.0.1;Database=token;User Id=sa;Password=dd666666;"
-      - "ConnectionString=Server=127.0.0.1;Database=logger;User Id=sa;Password=dd666666;"
+      - ConnectionStrings:DefaultConnection=Server=127.0.0.1;Database=token;User Id=sa;Password=dd666666;
+      - ConnectionStrings:LoggerConnection=Server=127.0.0.1;Database=logger;User Id=sa;Password=dd666666;
+      - RunMigrationsAtStartup=true
 ```
 
 执行如下命令打包镜像
@@ -296,15 +314,15 @@ docker run版本
 
 ```shell
 docker run -d \
-  --name ai-dotnet-api-service \
+  --name thor \
   -p 18080:8080 \
   -v $(pwd)/data:/data \
   -e TZ=Asia/Shanghai \
+  -e RunMigrationsAtStartup=true \
   -e DBType=sqlserver \
-  -e Theme=lobe  \
-  -e "ConnectionString=Server=127.0.0.1;Database=token;User Id=sa;Password=dd666666;" \
-  -e "ConnectionString=Server=127.0.0.1;Database=logger;User Id=sa;Password=dd666666;" \
-  hejiale010426/ai-dotnet-api-service:latest
+  -e ConnectionStrings:DefaultConnection=Server=127.0.0.1;Database=token;User Id=sa;Password=dd666666; \
+  -e ConnectionStrings:LoggerConnection=Server=127.0.0.1;Database=logger;User Id=sa;Password=dd666666; \
+  aidotnet/thor:latest
 ```
 
 然后访问 http://localhost:18080 即可看到服务启动成功。
@@ -318,19 +336,19 @@ docker run -d \
 version: '3.8'
 
 services:
-  ai-dotnet-api-service:
-    image: hejiale010426/ai-dotnet-api-service:latest
-    container_name: ai-dotnet-api-service
+  thor:
+    image: aidotnet/thor:latest
+    container_name: thor
     ports:
-      - 8080
+      - 18080:8080
     volumes:
       - ./data:/data
     environment:
       - TZ=Asia/Shanghai
       - DBType=mysql
-      - Theme=lobe
-      - "ConnectionString=mysql://root:dd666666@localhost:3306/token"
-      - "ConnectionString=mysql://root:dd666666@localhost:3306/logger"
+      - "ConnectionStrings:DefaultConnection=mysql://root:dd666666@localhost:3306/token"
+      - "ConnectionStrings:LoggerConnection=mysql://root:dd666666@localhost:3306/logger"
+      - RunMigrationsAtStartup=true
 ```
 
 执行如下命令打包镜像
@@ -347,15 +365,15 @@ docker run版本
 
 ```shell
 docker run -d \
-  --name ai-dotnet-api-service \
+  --name thor \
   -p 18080:8080 \
   -v $(pwd)/data:/data \
   -e TZ=Asia/Shanghai \
   -e DBType=mysql \
-  -e Theme=lobe \
-  -e "ConnectionString=mysql://root:dd666666@localhost:3306/token" \
-  -e "ConnectionString=mysql://root:dd666666@localhost:3306/logger" \
-  hejiale010426/ai-dotnet-api-service:latest
+  -e "ConnectionStrings:DefaultConnection=mysql://root:dd666666@localhost:3306/token" \
+  -e "ConnectionStrings:LoggerConnection=mysql://root:dd666666@localhost:3306/logger" \
+  -e RunMigrationsAtStartup=true \
+  aidotnet/thor:latest
 ```
 
 然后访问 http://localhost:18080 即可看到服务启动成功。

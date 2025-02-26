@@ -20,6 +20,49 @@ public static class HttpContextExtensions
         context.Response.Headers.TryAdd("Connection", "keep-alive");
     }
 
+    public static string GetContentType(string extension)
+    {
+        return extension switch
+        {
+            ".html" => "text/html",
+            ".htm" => "text/html",
+            ".css" => "text/css",
+            ".js" => "application/javascript",
+            ".json" => "application/json",
+            ".png" => "image/png",
+            ".jpg" => "image/jpeg",
+            ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".svg" => "image/svg+xml",
+            ".ico" => "image/x-icon",
+            ".mp4" => "video/mp4",
+            ".webm" => "video/webm",
+            ".ogg" => "video/ogg",
+            ".mp3" => "audio/mp3",
+            ".wav" => "audio/wav",
+            ".webp" => "image/webp",
+            ".woff" => "font/woff",
+            ".woff2" => "font/woff2",
+            ".ttf" => "font/ttf",
+            ".eot" => "font/eot",
+            ".otf" => "font/otf",
+            ".pdf" => "application/pdf",
+            ".zip" => "application/zip",
+            ".rar" => "application/x-rar-compressed",
+            ".7z" => "application/x-7z-compressed",
+            ".txt" => "text/plain",
+            ".csv" => "text/csv",
+            ".xml" => "text/xml",
+            ".doc" => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls" => "application/vnd.ms-excel",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".ppt" => "application/vnd.ms-powerpoint",
+            ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            _ => "application/octet-stream"
+        };
+    }
+
     /// <summary>
     /// 往响应内容写入事件流数据,调用前需要先调用 <see cref="SetEventStreamHeaders"/>
     /// </summary>
@@ -71,8 +114,8 @@ public static class HttpContextExtensions
             {
                 new()
                 {
-                    Message =assistantMessage,
-                    Delta =assistantMessage,
+                    Message = assistantMessage,
+                    Delta = assistantMessage,
                     FinishReason = "error",
                     FinishDetails = new()
                     {
@@ -101,8 +144,8 @@ public static class HttpContextExtensions
             {
                 new()
                 {
-                    Message =assistantMessage,
-                    Delta =assistantMessage,
+                    Message = assistantMessage,
+                    Delta = assistantMessage,
                     FinishReason = "error",
                     FinishDetails = new()
                     {
@@ -128,6 +171,90 @@ public static class HttpContextExtensions
                 Code = code
             }
         };
-        await context.Response.WriteAsJsonAsync(error);
+        await context.Response.WriteAsJsonAsync(error, ThorJsonSerializer.DefaultOptions);
+    }
+
+    /// <summary>
+    /// 获取IP地址
+    /// </summary>
+    /// <param name="context"></param>
+    /// <returns></returns>
+    public static string GetIpAddress(this HttpContext context)
+    {
+        var address = context.Connection.RemoteIpAddress;
+        // 获取具体IP地址，不包括:ffff:，可能是IPv6
+        if (address?.IsIPv4MappedToIPv6 == true)
+        {
+            address = address.MapToIPv4();
+        }
+        else if (address?.IsIPv6SiteLocal == true)
+        {
+            address = address.MapToIPv4();
+        }
+        else if (address?.IsIPv6Teredo == true)
+        {
+            address = address.MapToIPv4();
+        }
+        else if (address?.IsIPv6Multicast == true)
+        {
+            address = address.MapToIPv6();
+        }
+        else if (address?.IsIPv6UniqueLocal == true)
+        {
+            address = address.MapToIPv6();
+        }
+        else if (address?.IsIPv6LinkLocal == true)
+        {
+            address = address.MapToIPv6();
+        }
+        else
+        {
+            address = address?.MapToIPv4();
+        }
+
+        var ip = address?.ToString();
+
+        if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var ips) && !string.IsNullOrWhiteSpace(ips))
+        {
+            ip = ips.ToString();
+        }
+
+        return ip;
+    }
+
+    /// <summary>
+    /// 获取userAgent
+    /// </summary>
+    /// <param name="context"></param>
+    /// <returns></returns>
+    public static string GetUserAgent(this HttpContext context)
+    {
+        // 获取UserAgent，提取有用信息
+        var userAgent = context.Request.Headers.UserAgent.FirstOrDefault();
+
+        // 提取有用信息
+        if (userAgent != null)
+        {
+            var index = userAgent.IndexOf('(');
+            if (index > 0)
+            {
+                userAgent = userAgent[..index];
+            }
+            else
+            {
+                userAgent = userAgent switch
+                {
+                    not null when userAgent.Contains("Windows") => "Windows",
+                    not null when userAgent.Contains("Mac") => "Mac",
+                    not null when userAgent.Contains("Linux") => "Linux",
+                    not null when userAgent.Contains("Android") => "Android",
+                    not null when userAgent.Contains("iPhone") => "iPhone",
+                    not null when userAgent.Contains("iPad") => "iPad",
+                    _ => "未知"
+                };
+            }
+        }
+
+        return userAgent ?? "未知";
     }
 }

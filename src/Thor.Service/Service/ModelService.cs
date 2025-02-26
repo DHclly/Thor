@@ -1,4 +1,7 @@
-﻿namespace Thor.Service.Service;
+﻿using Thor.Core.DataAccess;
+using Thor.Service.Model;
+
+namespace Thor.Service.Service;
 
 public static class ModelService
 {
@@ -13,7 +16,7 @@ public static class ModelService
 
     public static string[] GetModels()
     {
-        var result = SettingService.PromptRate.Select(x => x.Key).ToArray();
+        var result = ModelManagerService.PromptRate.Select(x => x.Key).ToArray();
 
         return result;
     }
@@ -25,8 +28,8 @@ public static class ModelService
         var model = await cache.GetAsync<List<UseModelDto>>("UseModels").ConfigureAwait(false);
         if (model != null) return model;
 
-        var dbContext = context.RequestServices.GetRequiredService<AIDotNetDbContext>();
-        var loggerDbContext = context.RequestServices.GetRequiredService<LoggerDbContext>();
+        var dbContext = context.RequestServices.GetRequiredService<IThorContext>();
+        var loggerDbContext = context.RequestServices.GetRequiredService<ILoggerDbContext>();
 
         // 获取模型
         var channels = await dbContext.Channels.ToListAsync();
@@ -61,5 +64,30 @@ public static class ModelService
         await cache.CreateAsync("UseModels", value, TimeSpan.FromHours(5));
 
         return value;
+    }
+
+    public static async Task<ModelsListDto> GetAsync(HttpContext context)
+    {
+        var dbContext = context.RequestServices.GetRequiredService<IThorContext>();
+
+        var models = await dbContext.ModelManagers
+            .OrderBy(x => x.CreatedAt)
+            .Where(x => x.Enable)
+            .ToListAsync();
+
+        var modelsListDto = new ModelsListDto();
+
+        foreach (var model in models)
+        {
+            modelsListDto.Data.Add(new ModelsDataDto()
+            {
+                Created = model.CreatedAt.ToUnixTimeSeconds(),
+                Id = model.Model,
+                @object = "model",
+                OwnedBy = "openai",
+            });
+        }
+
+        return modelsListDto;
     }
 }

@@ -1,4 +1,5 @@
-﻿using SharpToken;
+﻿using System.Runtime.CompilerServices;
+using SharpToken;
 
 namespace Thor.Service.Infrastructure.Helper;
 
@@ -8,7 +9,7 @@ public static class TokenHelper
 
     static TokenHelper()
     {
-        GptEncoding ??= GptEncoding.GetEncodingForModel("gpt-4");
+        GptEncoding ??= GptEncoding.GetEncoding("cl100k_base");
     }
 
     /// <summary>
@@ -16,13 +17,21 @@ public static class TokenHelper
     /// </summary>
     /// <param name="content"></param>
     /// <returns></returns>
-    public static int GetTotalTokens(params string[] content)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int GetTotalTokens(params string?[] content)
     {
-        return content.Sum(item => GptEncoding.Encode(item).Count);
+        return content.Sum((s => RefGetTokens(ref s)));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int RefGetTokens(ref string content)
+    {
+        return GptEncoding.CountTokens(content);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int GetTokens(string content)
     {
-        return GptEncoding.Encode(content).Count;
+        return GptEncoding.CountTokens(content);
     }
 }

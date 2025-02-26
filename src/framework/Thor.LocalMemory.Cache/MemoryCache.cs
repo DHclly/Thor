@@ -13,24 +13,21 @@ public sealed class MemoryCache(IMemoryCache memoryCache) : IServiceCache
 
             var token = new CancellationTokenSource(ttl.Value);
             token.Token.Register(() => memoryCache.Remove(key));
-            memoryCache.Set(key, value);
         }
-        else
-        {
-            memoryCache.Set(key, value);
-        }
+
+        memoryCache.Set(key, value);
 
         await ValueTask.CompletedTask;
     }
 
+    public Task<bool> ExistsAsync(string key)
+    {
+        return Task.FromResult(memoryCache.TryGetValue(key, out _));
+    }
+
     public ValueTask<T?> GetAsync<T>(string key)
     {
-        if (memoryCache.TryGetValue(key, out T value))
-        {
-            return new ValueTask<T?>(value);
-        }
-
-        return new ValueTask<T?>(default(T));
+        return memoryCache.TryGetValue(key, out T value) ? new ValueTask<T?>(value) : new ValueTask<T?>(default(T));
     }
 
     public ValueTask RemoveAsync(string key)
@@ -54,14 +51,15 @@ public sealed class MemoryCache(IMemoryCache memoryCache) : IServiceCache
         return new ValueTask();
     }
 
-    public async ValueTask<T?> GetOrCreateAsync<T>(string key, Func<ValueTask<T>> factory, TimeSpan? ttl = null)
+    public async ValueTask<T?> GetOrCreateAsync<T>(string key, Func<ValueTask<T>> factory, TimeSpan? ttl = null,
+        bool isLock = false)
     {
         if (memoryCache.TryGetValue(key, out T value))
         {
             return value;
         }
 
-        var result = await factory();
+        var result = await factory().ConfigureAwait(false);
 
         if (ttl.HasValue)
         {

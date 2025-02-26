@@ -1,44 +1,44 @@
-﻿namespace Thor.Service.Service;
+﻿using System.Diagnostics;
+using Thor.Service.Infrastructure;
 
-public class RateLimitModelService(IServiceProvider serviceProvider) : ApplicationService(serviceProvider)
+namespace Thor.Service.Service;
+
+public class RateLimitModelService(IServiceProvider serviceProvider, IServiceCache serviceCache)
+    : ApplicationService(serviceProvider), IScopeDependency
 {
-    private static List<RateLimitModel> _rateLimitModels = new();
-
-    public static async ValueTask LoadAsync(AIDotNetDbContext context)
-    {
-        _rateLimitModels = await context.RateLimitModels
-            .AsNoTracking()
-            .Where(x => x.Enable)
-            .ToListAsync();
-    }
+    private const string CacheKey = "CacheKey:RateLimitModel";
 
     /// <summary>
     /// 模型速率检测
     /// </summary>
     /// <param name="model"></param>
-    /// <param name="context"></param>
-    /// <param name="serviceCache"></param>
+    /// <param name="userId"></param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
     /// <exception cref="RateLimitException"></exception>
-    public async ValueTask CheckAsync(string model, HttpContext context, IServiceCache serviceCache)
+    public async ValueTask CheckAsync(string model, string userId)
     {
-        // 获取IP
-        var ip = context.Connection.RemoteIpAddress?.ToString();
+        using var check =
+            Activity.Current?.Source.StartActivity("模型速率检测");
 
-        //获取头
-        if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var header))
+        var rateLimitModels = await serviceCache.GetOrCreateAsync(CacheKey,
+            async () =>
+            {
+                return await DbContext.RateLimitModels
+                    .AsNoTracking()
+                    .Where(x => x.Enable)
+                    .ToListAsync();
+            }, isLock: false).ConfigureAwait(false);
+
+        if (rateLimitModels == null || rateLimitModels?.Count == 0) return;
+
+        foreach (var rateLimitModel in rateLimitModels.Where(x => x.Model.Contains(model)))
         {
-            ip = header;
-        }
+            if (rateLimitModel.WhiteList.Contains(userId)) return;
 
-        foreach (var rateLimitModel in _rateLimitModels.Where(x => x.Model.Contains(model)))
-        {
-            if (rateLimitModel.WhiteList.Contains(ip)) return;
+            if (rateLimitModel.BlackList.Contains(userId)) throw new Exception("IP is in the blacklist");
 
-            if (rateLimitModel.BlackList.Contains(ip)) throw new Exception("IP is in the blacklist");
-
-            var key = $"{model}:{ip}{rateLimitModel.Id}";
+            var key = $"{model}:{userId}{rateLimitModel.Id}";
 
 
             // 判断是否存在缓存
@@ -91,7 +91,7 @@ public class RateLimitModelService(IServiceProvider serviceProvider) : Applicati
 
         await DbContext.SaveChangesAsync();
 
-        await LoadAsync(DbContext);
+        await serviceCache.RemoveAsync(CacheKey);
     }
 
     public async ValueTask<bool> RemoveAsync(string id)
@@ -99,7 +99,8 @@ public class RateLimitModelService(IServiceProvider serviceProvider) : Applicati
         var result = await DbContext.RateLimitModels.Where(x => x.Id == id)
             .ExecuteDeleteAsync();
 
-        await LoadAsync(DbContext);
+        await serviceCache.RemoveAsync(CacheKey);
+
         return result > 0;
     }
 
@@ -116,7 +117,8 @@ public class RateLimitModelService(IServiceProvider serviceProvider) : Applicati
                 .SetProperty(x => x.Strategy, rateLimitModel.Strategy)
                 .SetProperty(x => x.Limit, rateLimitModel.Limit));
 
-        await LoadAsync(DbContext);
+        await serviceCache.RemoveAsync(CacheKey);
+
         return result > 0;
     }
 
@@ -125,6 +127,6 @@ public class RateLimitModelService(IServiceProvider serviceProvider) : Applicati
         await DbContext.RateLimitModels.Where(x => x.Id == id)
             .ExecuteUpdateAsync(x => x.SetProperty(x => x.Enable, x => !x.Enable));
 
-        await LoadAsync(DbContext);
+        await serviceCache.RemoveAsync(CacheKey);
     }
 }

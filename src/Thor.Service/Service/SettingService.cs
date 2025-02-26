@@ -1,6 +1,7 @@
 ﻿using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Thor.Core.DataAccess;
 using Thor.Service.Infrastructure;
 
 namespace Thor.Service.Service;
@@ -10,22 +11,14 @@ public static class SettingService
     // 超级轻量级的集合，高性能查询
     private static ImmutableList<Setting> Settings { get; set; } = ImmutableList<Setting>.Empty;
 
-    public static Dictionary<string, decimal> PromptRate { get; private set; } = new();
-    public static Dictionary<string, decimal> CompletionRate { get; private set; } = new();
-
     public static async Task LoadingSettings(WebApplication app)
     {
         using var scope = app.Services.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<AIDotNetDbContext>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<IThorContext>();
         var settings = await dbContext.Settings.ToListAsync();
         Settings = settings.ToImmutableList();
-
-        PromptRate.Clear();
-        CompletionRate.Clear();
-
-        PromptRate = GetSetting<Dictionary<string, decimal>>(SettingExtensions.GeneralSetting.ModelPromptRate);
-
-        CompletionRate = GetSetting<Dictionary<string, decimal>>(SettingExtensions.GeneralSetting.ModelCompletionRate);
+        
+        await ModelManagerService.LoadingSettings(dbContext);
     }
 
     public static string GetSetting(string key)
@@ -69,7 +62,7 @@ public static class SettingService
     /// <param name="settings"></param>
     /// <param name="dbContext"></param>
     public static async ValueTask UpdateSettingsAsync([FromBody] List<Setting> settings,
-        AIDotNetDbContext dbContext)
+        IThorContext dbContext)
     {
         var dbSettings = await dbContext.Settings.ToListAsync();
         foreach (var setting in dbSettings)
@@ -83,12 +76,5 @@ public static class SettingService
         await dbContext.SaveChangesAsync();
 
         Settings = dbSettings.ToImmutableList();
-
-        PromptRate.Clear();
-        CompletionRate.Clear();
-
-        PromptRate = GetSetting<Dictionary<string, decimal>>(SettingExtensions.GeneralSetting.ModelPromptRate);
-
-        CompletionRate = GetSetting<Dictionary<string, decimal>>(SettingExtensions.GeneralSetting.ModelCompletionRate);
     }
 }

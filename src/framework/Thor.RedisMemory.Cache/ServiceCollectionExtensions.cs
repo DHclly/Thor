@@ -1,19 +1,26 @@
-﻿using System.Text.Json;
-using FreeRedis;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 using Thor.BuildingBlocks.Cache;
 
 namespace Thor.RedisMemory.Cache;
 
 public static class ServiceCollectionExtensions
 {
+    /// <summary>
+    /// 添加Redis内存
+    /// </summary>
+    /// <param name="services"></param>
+    /// <param name="redisConnectionString"></param>
+    /// <returns></returns>
     public static IServiceCollection AddRedisMemory(this IServiceCollection services, string redisConnectionString)
     {
-        services.AddSingleton<RedisClient>((_) => new RedisClient(redisConnectionString)
+        services.AddMemoryCache();
+        services.AddTransient<IConnectionMultiplexer>((_) =>
         {
-            Serialize = o => JsonSerializer.Serialize(o),
-            Deserialize = (s, type) => JsonSerializer.Deserialize(s, type)
+            var connection = ConnectionMultiplexer.Connect(redisConnectionString);
+            return connection;
         });
+        
         services
             .AddSingleton<IServiceCache, RedisCache>();
 

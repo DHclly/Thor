@@ -1,56 +1,87 @@
-import { memo, useState } from 'react';
-import { Flexbox } from 'react-layout-kit';
-import { FloatButton } from 'antd';
+import { memo } from "react";
 
-import { LayoutProps } from './type';
-import { Outlet, useNavigate } from 'react-router-dom';
-import { MenuOutlined } from '@ant-design/icons';
-import { Copilot } from '@lobehub/icons';
-import { Tooltip } from '@lobehub/ui';
+import { LayoutProps } from "./type";
+import { Outlet } from "react-router-dom";
+import { Layout, theme } from "antd";
+import { Avatar, Header, Logo, ThemeSwitch } from "@lobehub/ui";
+import { Dropdown } from "antd";
+import { useNavigate } from "react-router-dom";
+import useThemeStore from "../store/theme";
 
-const Layout = memo<LayoutProps>(({ nav }) => {
-    const [open, setOpen] = useState(true);
-    const navigate = useNavigate();
 
-    function onChange(checked: boolean) {
-        setOpen(checked);
-    }
+const { Content, Footer, Sider } = Layout;
+const LayoutPage = memo<LayoutProps>(({ nav }) => {
+  const {
+    token: { colorBgContainer, borderRadiusLG },
+  } = theme.useToken();
+  const { themeMode, toggleTheme } = useThemeStore();
+  const navigate = useNavigate();
+  return (
+    <Layout style={{ minHeight: "100vh" }}>
+      <Sider
+        style={{
+          background: colorBgContainer,
+          paddingTop: "16px",
+        }}
+      >
+        <Logo extra={"Thor"} style={{
+          textAlign: 'center',
+          marginLeft: '8px',
+          marginTop: '8px',
+          marginBottom: '8px',
+        }} size={48} />
+        {nav}
+      </Sider>
+      <Layout>
+        <Header actions={
+          <>
+            <ThemeSwitch onThemeSwitch={(model) => toggleTheme(model)}
+              themeMode={themeMode} />
+            <Dropdown menu={{
+              items: [
+                {
+                  key: 'account',
+                  label: '账户设置',
+                  onClick: () => {
+                    navigate('/current')
+                  }
+                },
+                {
+                  key: 'logout',
+                  label: '退出登录',
+                  onClick: () => {
+                    localStorage.removeItem('token')
+                    navigate('/login')
+                  }
+                }
+              ]
+            }}>
+              <Avatar src='/logo.png' size={48} />
+            </Dropdown>
+          </>
+        }>
 
-    return (
-        <Flexbox
-            height={'100%'}
-            horizontal
+        </Header>
+        <Content style={{ margin: "16px" }}>
+          <div
             style={{
-                position: 'relative',
+              padding: 24,
+              minHeight: 360,
+              background: colorBgContainer,
+              borderRadius: borderRadiusLG,
             }}
-            width={'100%'}
-        >
-            {nav}
+          >
             <Outlet />
-            <FloatButton.Group
-                open={open}
-                trigger="click"
-                onClick={() => {
-                    onChange(!open);
-                }}
-                style={{ right: 24 }}
-                icon={<MenuOutlined />}
-            >
-                <Tooltip title="接入文档">
-                    <FloatButton onClick={() => {
-                        navigate('/doc')
-                    }} />
-                </Tooltip>
-                <Tooltip title="可用模型列表">
-                    <FloatButton onClick={() => {
-                        navigate('/model')
-                    }} icon={<Copilot.Color />} />
-                </Tooltip>
-            </FloatButton.Group>
-        </Flexbox>
-    );
+          </div>
+        </Content>
+        <Footer style={{ textAlign: "center" }}>
+          Thor ©{new Date().getFullYear()} Created by Thor
+        </Footer>
+      </Layout>
+    </Layout>
+  );
 });
 
-Layout.displayName = 'DesktopMainLayout';
+LayoutPage.displayName = "DesktopMainLayout";
 
-export default Layout;
+export default LayoutPage;

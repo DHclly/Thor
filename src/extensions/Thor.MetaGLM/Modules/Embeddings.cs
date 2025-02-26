@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Thor.Abstractions;
 using Thor.MetaGLM.Models.RequestModels;
 using Thor.MetaGLM.Models.ResponseModels.EmbeddingModels;
 
@@ -8,7 +9,6 @@ namespace Thor.MetaGLM.Modules
     public class Embeddings
     {
         private static readonly int API_TOKEN_TTL_SECONDS = 60 * 5;
-        static readonly HttpClient client = new();
 
         private IEnumerable<string> ProcessBase(EmbeddingRequestBase requestBody, string apiKey)
         {
@@ -28,10 +28,10 @@ namespace Thor.MetaGLM.Modules
                 {
                     { "Authorization", api_key }
                 },
-
             };
 
-            var response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).Result;
+            var response = HttpClientFactory.GetHttpClient(request.RequestUri.AbsoluteUri)
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead).Result;
             var stream = response.Content.ReadAsStreamAsync().Result;
             byte[] buffer = new byte[8192];
             int bytesRead;
@@ -45,13 +45,12 @@ namespace Thor.MetaGLM.Modules
         public EmbeddingResponseBase Process(EmbeddingRequestBase requestBody, string apiKey)
         {
             var sb = new StringBuilder();
-            foreach (var str in ProcessBase(requestBody,apiKey))
+            foreach (var str in ProcessBase(requestBody, apiKey))
             {
                 sb.Append(str);
             }
 
             return EmbeddingResponseBase.FromJson(sb.ToString());
         }
-
     }
 }

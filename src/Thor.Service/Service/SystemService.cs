@@ -1,4 +1,5 @@
-﻿using Thor.Service.Infrastructure;
+﻿using Thor.Infrastructure;
+using Thor.Service.Infrastructure;
 using Thor.Service.Options;
 
 namespace Thor.Service.Service;
@@ -11,7 +12,7 @@ public sealed class SystemService(
     IServiceProvider serviceProvider,
     IServiceCache serviceCache,
     LoggerService loggerService)
-    : ApplicationService(serviceProvider)
+    : ApplicationService(serviceProvider) ,IScopeDependency
 {
     /// <summary>
     /// 触发分享获取奖励

@@ -1,13 +1,18 @@
 ﻿using MapsterMapper;
 using OpenAI.Chat;
 using System.Diagnostics;
+using System.Threading.Channels;
 using Thor.Abstractions.Chats;
 using Thor.Abstractions.Chats.Consts;
 using Thor.Abstractions.Chats.Dtos;
+using Thor.Abstractions.Exceptions;
 using Thor.Abstractions.ObjectModels.ObjectModels.RequestModels;
-using Thor.Claudia;
+using Thor.AzureOpenAI;
+using Thor.Claude;
+using Thor.Core;
 using Thor.Hunyuan;
-using Thor.OpenAI;
+using Thor.DeepSeek;
+using Thor.Service.Infrastructure;
 using Thor.SparkDesk;
 
 namespace Thor.Service.Service;
@@ -17,15 +22,19 @@ namespace Thor.Service.Service;
 /// </summary>
 /// <param name="serviceProvider"></param>
 /// <param name="mapper"></param>
-public sealed class ChannelService(IServiceProvider serviceProvider, IMapper mapper)
-    : ApplicationService(serviceProvider)
+public sealed class ChannelService(IServiceProvider serviceProvider, IMapper mapper, IServiceCache cache)
+    : ApplicationService(serviceProvider), IScopeDependency
 {
+    private const string CacheKey = "CacheKey:Channel";
+
     /// <summary>
     /// 获取渠道列表 如果缓存中有则从缓存中获取
     /// </summary>
-    public async ValueTask<List<ChatChannel>> GetChannelsAsync()
+    public async Task<ChatChannel[]> GetChannelsAsync()
     {
-        return await DbContext.Channels.AsNoTracking().Where(x => !x.Disable).ToListAsync();
+        return await cache.GetOrCreateAsync(CacheKey,
+            async () => { return await DbContext.Channels.AsNoTracking().Where(x => !x.Disable).ToArrayAsync(); },
+            isLock: false);
     }
 
     /// <summary>
@@ -50,6 +59,8 @@ public sealed class ChannelService(IServiceProvider serviceProvider, IMapper map
         await DbContext.Channels.AddAsync(result);
 
         await DbContext.SaveChangesAsync();
+
+        await cache.RemoveAsync(CacheKey);
     }
 
     /// <summary>
@@ -87,6 +98,8 @@ public sealed class ChannelService(IServiceProvider serviceProvider, IMapper map
         var result = await DbContext.Channels.Where(x => x.Id == id)
             .ExecuteDeleteAsync();
 
+        await cache.RemoveAsync(CacheKey);
+
         return result > 0;
     }
 
@@ -110,6 +123,7 @@ public sealed class ChannelService(IServiceProvider serviceProvider, IMapper map
                         .SetProperty(x => x.Other, chatChannel.Other)
                         .SetProperty(x => x.Extension, chatChannel.Extension)
                         .SetProperty(x => x.Models, chatChannel.Models));
+            await cache.RemoveAsync(CacheKey);
             return result > 0;
         }
         else
@@ -123,6 +137,7 @@ public sealed class ChannelService(IServiceProvider serviceProvider, IMapper map
                         .SetProperty(x => x.Extension, chatChannel.Extension)
                         .SetProperty(x => x.Other, chatChannel.Other)
                         .SetProperty(x => x.Models, chatChannel.Models));
+            await cache.RemoveAsync(CacheKey);
 
             return result > 0;
         }
@@ -133,6 +148,8 @@ public sealed class ChannelService(IServiceProvider serviceProvider, IMapper map
         await DbContext.Channels
             .Where(x => x.Id == id)
             .ExecuteUpdateAsync(x => x.SetProperty(y => y.Order, order));
+
+        await cache.RemoveAsync(CacheKey);
     }
 
     public async ValueTask ControlAutomaticallyAsync(string id)
@@ -148,6 +165,8 @@ public sealed class ChannelService(IServiceProvider serviceProvider, IMapper map
         await DbContext.Channels
             .Where(x => x.Id == id)
             .ExecuteUpdateAsync(x => x.SetProperty(y => y.Disable, a => !a.Disable));
+
+        await cache.RemoveAsync(CacheKey);
     }
 
     /// <summary>
@@ -176,12 +195,10 @@ public sealed class ChannelService(IServiceProvider serviceProvider, IMapper map
 
         var chatRequest = new ThorChatCompletionsRequest()
         {
-            TopP=0.7f,
-            Temperature=0.95f,
-            Messages=new List<ThorChatMessage>()
-            {
-                ThorChatMessage.CreateUserMessage("hello")
-            }
+            TopP = 0.7f,
+            Temperature = 0.95f,
+            MaxTokens = 100,
+            Messages = [ThorChatMessage.CreateUserMessage("hello")]
         };
 
         var platformOptions = new ThorPlatformOptions
@@ -191,11 +208,18 @@ public sealed class ChannelService(IServiceProvider serviceProvider, IMapper map
             Other = channel.Other
         };
 
-        if (channel.Type == OpenAIPlatformOptions.PlatformCode)
+        if (channel.Type is OpenAIPlatformOptions.PlatformCode or AzureOpenAIPlatformOptions.PlatformCode)
         {
-            // 获取渠道是否支持gpt-3.5-turbo
-            chatRequest.Model = channel.Models.Order()
-                .FirstOrDefault(x => x.StartsWith("gpt-", StringComparison.OrdinalIgnoreCase));
+            // 如果没gpt3.5则搜索是否存在gpt4o模型
+            chatRequest.Model = channel.Models?.FirstOrDefault(x =>
+                x.StartsWith("gpt-4o-mini", StringComparison.OrdinalIgnoreCase)) ?? channel.Models!.First();
+
+            if (string.IsNullOrEmpty(chatRequest.Model))
+            {
+                // 获取渠道是否支持gpt-3.5-turbo
+                chatRequest.Model = channel.Models.Order()
+                    .FirstOrDefault(x => x.StartsWith("gpt-", StringComparison.OrdinalIgnoreCase));
+            }
         }
         else if (channel.Type == ClaudiaPlatformOptions.PlatformCode)
         {
@@ -215,33 +239,40 @@ public sealed class ChannelService(IServiceProvider serviceProvider, IMapper map
         }
         else
         {
-            chatRequest.Model = channel.Models.FirstOrDefault();
+            chatRequest.Model = channel.Models.First();
         }
-
 
         if (string.IsNullOrWhiteSpace(chatRequest.Model))
         {
-            chatRequest.Model = channel.Models.FirstOrDefault();
+            chatRequest.Model = channel.Models!.First();
         }
 
-        // 写一个10s的超时
         var token = new CancellationTokenSource();
-        // token.CancelAfter(20000);
 
         var sw = Stopwatch.StartNew();
-        var response = await chatCompletionsService.ChatCompletionsAsync(chatRequest, platformOptions, token.Token);
+
+        var response = await chatCompletionsService.ChatCompletionsAsync(chatRequest,
+            platformOptions,
+            token.Token);
+
         sw.Stop();
 
         // 更新渠道测试响应时间
         await DbContext.Channels
             .Where(x => x.Id == id)
-            .ExecuteUpdateAsync(x => x.SetProperty(y => y.ResponseTime, sw.ElapsedMilliseconds));
+            .ExecuteUpdateAsync(x => x.SetProperty(y => y.ResponseTime, sw.ElapsedMilliseconds),
+                cancellationToken: token.Token);
 
         if (!string.IsNullOrWhiteSpace(response.Error?.Message))
         {
             throw new ChannelException(response.Error?.Message);
         }
 
-        return (response.Choices?.Count > 0,(int)sw.ElapsedMilliseconds);
+        if (response.Choices?.Count == 0)
+        {
+            throw new ChannelException("渠道返回数据为空");
+        }
+
+        return (response.Choices?.Count > 0, (int)sw.ElapsedMilliseconds);
     }
 }

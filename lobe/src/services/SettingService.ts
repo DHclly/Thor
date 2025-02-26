@@ -24,12 +24,6 @@ class GeneralSetting {
     static readonly ChatLink: string = GeneralSetting.Default + ":ChatLink";
 
     /**
-     * Vidol链接
-     * @type {string}
-     */
-    static readonly VidolLink: string = GeneralSetting.Default + ":VidolLink";
-
-    /**
      * 新用户初始额度
      * @type {string}
      */
@@ -76,18 +70,6 @@ class GeneralSetting {
      * @type {string}
      */
     static readonly AutoDisableChannel: string = GeneralSetting.Default + ":AutoDisableChannel";
-
-    /**
-     * 模型倍率Prompt
-     * @type {string}
-     */
-    static readonly ModelPromptRate: string = GeneralSetting.Default + ":ModelPromptRate";
-
-    /**
-     * 模型倍率Completion
-     * @type {string}
-     */
-    static readonly ModelCompletionRate: string = GeneralSetting.Default + ":ModelCompletionRate";
 
     /**
      * 支付宝回调地址
@@ -173,6 +155,88 @@ class SystemSetting {
      * @type {string}
      */
     static readonly GithubClientSecret: string = SystemSetting.Default + ":GithubClientSecret";
+    
+    /**
+     * 启用Gitee登录
+     * @type {string}
+     */
+    static readonly EnableGiteeLogin: string = SystemSetting.Default + ":EnableGiteeLogin";
+
+    /**
+     * Gitee Client Id
+     * @type {string}
+     */
+    static readonly GiteeClientId: string = SystemSetting.Default + ":GiteeClientId";
+
+    /**
+     * Gitee Client Secret
+     * @type {string}
+     * @static
+     * @memberof SystemSetting
+     */
+    static readonly GiteeClientSecret: string = SystemSetting.Default + ":GiteeClientSecret";
+
+    /**
+     * Gitee redirect_uri
+     * @type {string}
+     * @static
+     * @memberof SystemSetting
+     */
+    static readonly GiteeRedirectUri: string = SystemSetting.Default + ":GiteeRedirectUri";
+
+    /**
+     * 邮箱发送地址
+     * @type {string}
+     */
+    static readonly EmailAddress: string = SystemSetting.Default + ":EmailAddress";
+
+    /**
+     * 邮箱发送密码
+     * @type {string}
+     */
+    static readonly EmailPassword: string = SystemSetting.Default + ":EmailPassword";
+
+    /**
+     * 邮箱SMTP地址
+     * @type {string}
+     */
+    static readonly SmtpAddress: string = SystemSetting.Default + ":SmtpAddress";
+
+    /**
+     * 启用邮箱注册验证
+     * @type {string}
+     */
+    static readonly EnableEmailRegister: string = SystemSetting.Default + ":EnableEmailRegister";
+
+    
+    /**
+     * Casdoor Client Id
+     * @type {string}
+     */
+    static readonly CasdoorClientId: string = SystemSetting.Default + ":CasdoorClientId";
+
+    
+    /**
+     * 启用Casdoor授权
+     * @type {string}
+     */
+    static readonly EnableCasdoorAuth: string = SystemSetting.Default + ":EnableCasdoorAuth";
+
+    
+    /**
+     * Casdoor 自定义端点
+     * @type {string}
+     */
+    static readonly CasdoorEndipoint: string = SystemSetting.Default + ":CasdoorEndipoint";
+
+    
+    /**
+     * Casdoor Client Secret
+     * @type {string}
+     */
+    static readonly CasdoorClientSecret: string = SystemSetting.Default + ":CasdoorClientSecret";
+
+    
 }
 
 /**
@@ -244,10 +308,16 @@ function IsEnableAlipay() {
     return v?.value !== undefined && v?.value !== "";
 }
 
+function IsEnableEmailRegister() {
+    const v = InitSetting?.find(s => s.key === SystemSetting.EnableEmailRegister);
+    return v?.value === "true";
+}
+
 export {
     GeneralSetting,
     SystemSetting,
     OtherSetting,
+    IsEnableEmailRegister,
     InitSetting,
     IsEnableAlipay
 }

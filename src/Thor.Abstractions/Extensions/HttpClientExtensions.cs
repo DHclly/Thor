@@ -33,7 +33,6 @@ public static class HttpClientExtensions
             req.Headers.Add("Authorization", $"Bearer {token}");
         }
 
-
         var response = await httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
 
         return response;
@@ -70,6 +69,42 @@ public static class HttpClientExtensions
         return response;
     }
 
+    public static async Task<HttpResponseMessage> HttpRequestRaw(this HttpClient httpClient, string url,
+        object? postData,
+        string token, Dictionary<string, string> headers)
+    {
+        HttpRequestMessage req = new(HttpMethod.Post, url);
+
+        if (postData != null)
+        {
+            if (postData is HttpContent data)
+            {
+                req.Content = data;
+            }
+            else
+            {
+                string jsonContent = JsonSerializer.Serialize(postData, ThorJsonSerializer.DefaultOptions);
+                var stringContent = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                req.Content = stringContent;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(token))
+        {
+            req.Headers.Add("Authorization", $"Bearer {token}");
+        }
+
+        foreach (var header in headers)
+        {
+            req.Headers.Add(header.Key, header.Value);
+        }
+
+
+        var response = await httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+
+        return response;
+    }
+
     public static async Task<HttpResponseMessage> HttpRequestRaw(this HttpClient httpClient, HttpRequestMessage req,
         object? postData)
     {
@@ -92,7 +127,8 @@ public static class HttpClientExtensions
         return response;
     }
 
-    public static Task<HttpResponseMessage> PostJsonAsync(this HttpClient httpClient, string url, object? postData,
+    public static async Task<HttpResponseMessage> PostJsonAsync(this HttpClient httpClient, string url,
+        object? postData,
         string token)
     {
         HttpRequestMessage req = new(HttpMethod.Post, url);
@@ -116,7 +152,40 @@ public static class HttpClientExtensions
             req.Headers.Add("Authorization", $"Bearer {token}");
         }
 
-        return httpClient.SendAsync(req);
+        return await httpClient.SendAsync(req);
+    }
+
+    public static async Task<HttpResponseMessage> PostJsonAsync(this HttpClient httpClient, string url,
+        object? postData,
+        string token, Dictionary<string, string> headers)
+    {
+        HttpRequestMessage req = new(HttpMethod.Post, url);
+
+        if (postData != null)
+        {
+            if (postData is HttpContent data)
+            {
+                req.Content = data;
+            }
+            else
+            {
+                string jsonContent = JsonSerializer.Serialize(postData, ThorJsonSerializer.DefaultOptions);
+                var stringContent = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                req.Content = stringContent;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(token))
+        {
+            req.Headers.Add("Authorization", $"Bearer {token}");
+        }
+
+        foreach (var header in headers)
+        {
+            req.Headers.Add(header.Key, header.Value);
+        }
+
+        return await httpClient.SendAsync(req);
     }
 
     public static Task<HttpResponseMessage> PostJsonAsync(this HttpClient httpClient, string url, object? postData,

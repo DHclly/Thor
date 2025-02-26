@@ -12,15 +12,9 @@ namespace Thor.Ollama.Chats
     /// <summary>
     /// Ollama 对话补全服务实现
     /// </summary>
-    /// <param name="httpClientFactory"></param>
-    public class OllamaChatCompletionsService(IHttpClientFactory httpClientFactory)
+    public class OllamaChatCompletionsService
         : IThorChatCompletionsService
     {
-        /// <summary>
-        /// http 客户端
-        /// </summary>
-        private HttpClient HttpClient => httpClientFactory.CreateClient(nameof(OllamaPlatformOptions.PlatformCode));
-
         /// <summary>
         /// 非流式对话补全
         /// </summary>
@@ -33,14 +27,47 @@ namespace Thor.Ollama.Chats
             ThorPlatformOptions? options = null, 
             CancellationToken cancellationToken = default)
         {
-            var client = HttpClient;
-
             var url = (options?.Address?.TrimEnd('/') ?? "") + "/api/chat";
 
-            var response = await client.PostJsonAsync(url, new OllamaChatCompletionsRequest()
+            var tools = new List<Tool>();
+
+            if (request.Tools != null)
+            {
+                foreach (var tool in request.Tools)
+                {
+                    var properties = new Dictionary<string, Properties>();
+                    foreach (var definition in tool?.Function?.Parameters?.Properties)
+                    {
+                        properties.Add(definition.Key, new Properties()
+                        {
+                            Description = definition.Value.Description ?? string.Empty,
+                            Type = definition.Value.Type,
+                            Enum = definition.Value.Enum?.ToArray(),
+                        });
+                    }
+
+                    tools.Add(new Tool
+                    {
+                        Function = new Function
+                        {
+                            Description = tool?.Function.Description,
+                            Name = tool?.Function.Name,
+                            Parameters = new Parameters
+                            {
+                                Properties = properties,
+                                Required = tool?.Function?.Parameters?.Required?.ToArray(),
+                                Type = tool?.Function?.Parameters?.Type,
+                            }
+                        }
+                    });
+                }
+            }
+
+            var response = await HttpClientFactory.GetHttpClient(options.Address).PostJsonAsync(url, new OllamaChatCompletionsRequest()
             {
                 stream = false,
-                model = request.Model ?? "",
+                model = request.Model ?? "", 
+                Tools = tools,
                 messages = request.Messages.Select(x => new OllamaChatRequestMessage()
                 {
                     role = x.Role,
@@ -70,17 +97,33 @@ namespace Thor.Ollama.Chats
                 throw;
             }
 
-            var message = ThorChatMessage.CreateAssistantMessage(result.message.content);
+            var toolsResult = new List<ThorToolCall>();
+            if (result.message?.ToolCalls!= null && result.message.ToolCalls.Count() >0)
+            {
+                foreach (var content in result.message.ToolCalls)
+                {
+                    toolsResult.Add(new ThorToolCall()
+                    {    
+                        Function = new ThorChatMessageFunction()
+                        {
+                            Arguments = JsonSerializer.Serialize(content.Function?.Arguments),
+                            Name = content.Function?.Name
+                        }
+                    });
+                }
+            }
+
+            var message = ThorChatMessage.CreateAssistantMessage(result.message?.content ?? string.Empty, toolCalls: toolsResult);
             return new ThorChatCompletionsResponse()
             {
-                Model = result.model,
+                Model = result.model, 
                 Choices = result.message == null ? [] :
                 [
                     new ThorChatChoiceResponse()
                     {
                         Delta =message,
                         FinishReason = "stop",
-                        Index = 0,
+                        Index = 0, 
                     }
                 ],
                 Usage = new ThorUsageResponse()
@@ -104,12 +147,44 @@ namespace Thor.Ollama.Chats
             ThorPlatformOptions? options = null, 
             CancellationToken cancellationToken = default)
         {
-            var client = HttpClient;
+            var tools = new List<Tool>();
 
-            var response = await client.HttpRequestRaw((options?.Address?.TrimEnd('/') ?? "") + "/api/chat", new OllamaChatCompletionsRequest()
+            if (request.Tools != null)
+            {
+                foreach (var tool in request.Tools)
+                {
+                    var properties = new Dictionary<string, Properties>();
+                    foreach (var definition in tool?.Function?.Parameters?.Properties)
+                    {
+                        properties.Add(definition.Key, new Properties()
+                        {
+                            Description = definition.Value.Description ?? string.Empty,
+                            Type = definition.Value.Type,
+                            Enum = definition.Value.Enum?.ToArray(),
+                        });
+                    }
+
+                    tools.Add(new Tool
+                    {
+                        Function = new Function
+                        {
+                            Description = tool?.Function.Description,
+                            Name = tool?.Function.Name,
+                            Parameters = new Parameters
+                            {
+                                Properties = properties,
+                                Required = tool?.Function?.Parameters?.Required?.ToArray(),
+                                Type = tool?.Function?.Parameters?.Type,
+                            }
+                        }
+                    });
+                }
+            }
+            var response = await HttpClientFactory.GetHttpClient(options.Address).HttpRequestRaw((options?.Address?.TrimEnd('/') ?? "") + "/api/chat", new OllamaChatCompletionsRequest()
             {
                 stream = true,
                 model = request.Model ?? "",
+                Tools = tools,
                 messages = request.Messages.Select(x => new OllamaChatRequestMessage()
                 {
                     role = x.Role,
@@ -125,7 +200,7 @@ namespace Thor.Ollama.Chats
 
             using StreamReader reader = new(await response.Content.ReadAsStreamAsync(cancellationToken));
             string? line = string.Empty;
-            while ((line = await reader.ReadLineAsync()) != null)
+            while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
             {
                 OllamaChatResponse? result;
                 try
@@ -146,7 +221,7 @@ namespace Thor.Ollama.Chats
                     yield return new ThorChatCompletionsResponse()
                     {
                         Model = result.model,
-                        Choices = [],
+                        Choices = [], 
                         Usage = new ThorUsageResponse()
                         {
                             PromptTokens = result.prompt_eval_count ?? 0,
@@ -158,18 +233,34 @@ namespace Thor.Ollama.Chats
                 }
                 else
                 {
-                    var message = ThorChatMessage.CreateAssistantMessage(result.message.content);
+                    var toolsResult = new List<ThorToolCall>();
+                    if (result.message?.ToolCalls != null && result.message.ToolCalls.Count() > 0)
+                    {
+                        foreach (var content in result.message.ToolCalls)
+                        {
+                            toolsResult.Add(new ThorToolCall()
+                            {
+                                Function = new ThorChatMessageFunction()
+                                {
+                                    Arguments = JsonSerializer.Serialize(content.Function?.Arguments),
+                                    Name = content.Function?.Name
+                                }
+                            });
+                        }
+                    }
+
+                    var message = ThorChatMessage.CreateAssistantMessage(result.message?.content ?? string.Empty, toolCalls: toolsResult);
 
                     yield return new ThorChatCompletionsResponse()
                     {
-                        Model = result.model,
+                        Model = result.model, 
                         Choices = result.message == null ? [] :
                         [
                             new ThorChatChoiceResponse()
                             {
                                 Delta =message,
                                 FinishReason = "stop",
-                                Index = 0,
+                                Index = 0, 
                             }
                         ],
                         Usage = new ThorUsageResponse()

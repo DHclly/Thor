@@ -17,6 +17,7 @@ public class AzureOpenAITextEmbeddingGenerationService : IThorTextEmbeddingServi
         var client = createClient.GetEmbeddingClient(createEmbeddingModel.Model);
         if (createEmbeddingModel.InputCalculated is string)
         {
+            
         }
 
         var response = await client.GenerateEmbeddingsAsync(createEmbeddingModel.InputCalculated?.ToArray(),
@@ -30,7 +31,7 @@ public class AzureOpenAITextEmbeddingGenerationService : IThorTextEmbeddingServi
             [
                 ..response.Value.Select(x => new EmbeddingResponse()
                 {
-                    Embedding = x.Vector.ToArray().Select(x => (double)x).ToList(),
+                    Embedding = x.ToFloats().ToArray().Select(x => (double)x).ToList(),
                     Index = x.Index
                 })
             ]

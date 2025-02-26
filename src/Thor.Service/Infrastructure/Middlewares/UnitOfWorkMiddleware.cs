@@ -1,6 +1,9 @@
-﻿namespace Thor.Service.Infrastructure.Middlewares;
+﻿using System.Diagnostics;
+using Thor.Core.DataAccess;
 
-public class UnitOfWorkMiddleware(ILogger<UnitOfWorkMiddleware> logger) : IMiddleware
+namespace Thor.Service.Infrastructure.Middlewares;
+
+public class UnitOfWorkMiddleware(ILogger<UnitOfWorkMiddleware> logger) : IMiddleware, ISingletonDependency
 {
     public async Task InvokeAsync(HttpContext context, RequestDelegate next)
     {
@@ -9,8 +12,13 @@ public class UnitOfWorkMiddleware(ILogger<UnitOfWorkMiddleware> logger) : IMiddl
             context.Request.Method != "HEAD" && context.Request.Method != "TRACE" &&
             context.Request.Method != "CONNECT")
         {
-            var dbContext = context.RequestServices.GetRequiredService<AIDotNetDbContext>();
-            var loggerDbContext = context.RequestServices.GetRequiredService<LoggerDbContext>();
+            using var activity =
+                Activity.Current?.Source.StartActivity("UnitOfWork", ActivityKind.Internal);
+
+            activity?.SetTag("UnitOfWork", "Begin");
+
+            var dbContext = context.RequestServices.GetRequiredService<IThorContext>();
+            var loggerDbContext = context.RequestServices.GetRequiredService<ILoggerDbContext>();
             try
             {
                 await next(context);
@@ -21,7 +29,11 @@ public class UnitOfWorkMiddleware(ILogger<UnitOfWorkMiddleware> logger) : IMiddl
             {
                 logger.LogError(exception, "An error occurred during the transaction. Message: {Message}",
                     exception.Message);
+
+                activity?.SetTag("UnitOfWork", "Rollback");
             }
+
+            activity?.SetTag("UnitOfWork", "End");
 
             return;
         }

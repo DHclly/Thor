@@ -1,4 +1,4 @@
-﻿namespace Thor.BuildingBlocks.Data;
+﻿namespace Thor.BuildingBlocks.Event;
 
 /// <summary>
 /// Represents the event bus.
@@ -6,5 +6,5 @@
 /// <typeparam name="TEvent"></typeparam>
 public interface IEventBus<in TEvent> where TEvent : class
 {
-    ValueTask PublishAsync(TEvent @event);
+    ValueTask PublishAsync(TEvent eventEvent);
 }

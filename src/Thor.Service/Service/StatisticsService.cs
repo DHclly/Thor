@@ -1,12 +1,13 @@
-﻿using Thor.Service.Domain.Core;
+﻿using Thor.Core.DataAccess;
+using Thor.Service.Domain.Core;
 using Thor.Service.Infrastructure;
 
 namespace Thor.Service.Service;
 
 public static class StatisticsService
 {
-    public static async ValueTask<StatisticsDto> GetStatisticsAsync(LoggerDbContext dbContext,
-        AIDotNetDbContext aiDotNetDbContext,
+    public static async ValueTask<StatisticsDto> GetStatisticsAsync(ILoggerDbContext dbContext,
+        IThorContext aiDotNetDbContext,
         IUserContext userContext)
     {
         var statisticsDto = new StatisticsDto
@@ -20,9 +21,67 @@ public static class StatisticsService
 
         #region 统计数据
 
-        // 获取七天的日期范围
-        var today = DateTime.Now.Date;
         var sevenDaysAgo = DateTime.Now.Date.AddDays(-7);
+
+        if (userContext.IsAdmin)
+        {
+            var result = await dbContext.Loggers.Where(x =>
+                    (x.Type == ThorChatLoggerType.CreateUser || x.Type == ThorChatLoggerType.Recharge) &&
+                    x.CreatedAt > sevenDaysAgo)
+                .ToListAsync();
+
+            var user = result.Where(x => x.Type == ThorChatLoggerType.CreateUser)
+                .GroupBy(x => x.CreatedAt.ToString("yyyy-MM-dd"))
+                .Select(x => new StatisticsNumberDto
+                {
+                    Name = x.Key,
+                    Value = x.Count()
+                });
+            var recharge = result.Where(x => x.Type == ThorChatLoggerType.Recharge)
+                .GroupBy(x => x.CreatedAt.ToString("yyyy-MM-dd"))
+                .Select(x => new StatisticsNumberDto
+                {
+                    Name = x.Key,
+                    Value = x.Sum(x => x.Quota)
+                });
+
+            statisticsDto.UserNewData = new List<StatisticsNumberDto>();
+            statisticsDto.RechargeData = new List<StatisticsNumberDto>();
+
+            foreach (var dateTime in Enumerable.Range(0, 7).Select(days => DateTime.Now.Date.AddDays(-days))
+                         .Order()
+                         .ToList())
+            {
+                var item = user.FirstOrDefault(x => x.Name == dateTime.ToString("yyyy-MM-dd"));
+                var rechargeItem = recharge.FirstOrDefault(x => x.Name == dateTime.ToString("yyyy-MM-dd"));
+                if (item == null)
+                {
+                    statisticsDto.UserNewData.Add(new StatisticsNumberDto()
+                    {
+                        Name = dateTime.ToString("yyyy-MM-dd"),
+                        Value = 0
+                    });
+                }
+                else
+                {
+                    statisticsDto.UserNewData.Add(item);
+                }
+
+                if (rechargeItem == null)
+                {
+                    statisticsDto.RechargeData.Add(new StatisticsNumberDto()
+                    {
+                        Name = dateTime.ToString("yyyy-MM-dd"),
+                        Value = 0
+                    });
+                }
+                else
+                {
+                    statisticsDto.RechargeData.Add(rechargeItem);
+                }
+            }
+        }
+
 
         var userQuery = dbContext.StatisticsConsumesNumbers
             .Where(log => log.CreatedAt >= sevenDaysAgo);
@@ -126,7 +185,7 @@ public static class StatisticsService
                 }).ToListAsync();
 
 
-        var allDates = dateList.Select(x => x.ToString("MM-dd")).Distinct().ToList();
+        var allDates = dateList.Select(x => x.ToString("yyyy-MM-dd")).Distinct().ToList();
 
         statisticsDto.ModelDate = allDates;
 
@@ -145,7 +204,7 @@ public static class StatisticsService
 
                 statisticsDto.Models.Add(new ModelStatisticsDto
                 {
-                    CreatedAt = modelStatistic.Key.CreateAt,
+                    CreatedAt = modelStatistic.Key.CreateAt.ToString("yyyy-MM-dd"),
                     Name = modelStatistic.Key.ModelName,
                     Data = dataForAllDates
                 });
@@ -154,7 +213,7 @@ public static class StatisticsService
             var model = statisticsDto.Models.FirstOrDefault(x => x.Name == modelStatistic.Key.ModelName);
 
             // Find the index of the current date in the allDates list
-            var dateIndex = allDates.IndexOf(modelStatistic.Key.CreateAt.ToString("MM-dd"));
+            var dateIndex = allDates.IndexOf(modelStatistic.Key.CreateAt.ToString("yyyy-MM-dd"));
 
             model.TokenUsed = modelStatistic.Sum(x => x.TokenUsed);
 
@@ -170,7 +229,30 @@ public static class StatisticsService
             }
         }
 
+        // 根据modelStatistics的数据，统计模型消费额度排名
+        var modelRanking = modelStatistics
+            .GroupBy(x => x.ModelName)
+            .Select(group => new
+            {
+                ModelName = group.Key,
+                Quota = group.Sum(x => x.Quota)
+            })
+            .OrderByDescending(x => x.Quota)
+            .Take(10)
+            .Select(x => new ModelRankingDto
+            {
+                Value = x.Quota,
+                Name = x.ModelName
+            })
+            .ToList();
+
+        statisticsDto.ModelRanking = modelRanking;
+
         #endregion
+
+        statisticsDto.Consumes = statisticsDto.Consumes.OrderBy(x => x.DateTime)
+            .ThenByDescending(x => x.Value)
+            .ToList();
 
         // 消费总额
         statisticsDto.CurrentConsumedCredit = await dbContext.StatisticsConsumesNumbers

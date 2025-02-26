@@ -36,7 +36,7 @@ public class ThorChatCompletionsRequest : IOpenAiModels.ITemperature, IOpenAiMod
     /// 默认 1
     /// </summary>
     [JsonPropertyName("top_p")]
-    public float? TopP { get; set; } = 1f;
+    public float? TopP { get; set; } 
 
     /// <summary>
     /// 使用什么采样温度，介于 0 和 2 之间。
@@ -45,7 +45,7 @@ public class ThorChatCompletionsRequest : IOpenAiModels.ITemperature, IOpenAiMod
     /// 默认 1
     /// </summary>
     [JsonPropertyName("temperature")]
-    public float? Temperature { get; set; } = 1f;
+    public float? Temperature { get; set; }
 
     /// <summary>
     /// 为每条输入消息生成多少个结果
@@ -56,7 +56,7 @@ public class ThorChatCompletionsRequest : IOpenAiModels.ITemperature, IOpenAiMod
     /// </para>
     /// </summary>
     [JsonPropertyName("n")]
-    public int? N { get; set; } = 1;
+    public int? N { get; set; } 
 
     /// <summary>
     /// 如果设置，将发送部分消息增量，就像在 ChatGPT 中一样。
@@ -118,6 +118,12 @@ public class ThorChatCompletionsRequest : IOpenAiModels.ITemperature, IOpenAiMod
     /// <see href="https://platform.openai.com/docs/api-reference/completions/create#completions/create-max_tokens" />
     [JsonPropertyName("max_tokens")]
     public int? MaxTokens { get; set; }
+
+    /// <summary>
+    /// 可为补全生成的令牌数量的上限，包括可见输出令牌和推理令牌。
+    /// </summary>
+    [JsonPropertyName("max_completion_tokens")]
+    public int? MaxCompletionTokens { get; set; }
 
     /// <summary>
     /// 存在惩罚，介于 -2.0 到 2.0 之间的数字。
@@ -221,7 +227,7 @@ public class ThorChatCompletionsRequest : IOpenAiModels.ITemperature, IOpenAiMod
                 }
                 else if (jsonElement.ValueKind == JsonValueKind.Object)
                 {
-                    ToolChoice= jsonElement.Deserialize<ThorToolChoice>();
+                    ToolChoice = jsonElement.Deserialize<ThorToolChoice>();
                 }
             }
             else
@@ -241,6 +247,8 @@ public class ThorChatCompletionsRequest : IOpenAiModels.ITemperature, IOpenAiMod
     [JsonPropertyName("response_format")]
     public ThorResponseFormat? ResponseFormat { get; set; }
 
+    [JsonPropertyName("metadata")] public Dictionary<string, string> Metadata { get; set; }
+
     /// <summary>
     /// 此功能处于测试阶段。
     /// 如果指定，我们的系统将尽最大努力进行确定性采样，
@@ -255,6 +263,8 @@ public class ThorChatCompletionsRequest : IOpenAiModels.ITemperature, IOpenAiMod
     /// </summary>
     [JsonPropertyName("user")]
     public string User { get; set; }
+
+    [JsonPropertyName("thinking")] public ThorChatClaudeThinking Thinking { get; set; }
 
     /// <summary>
     /// 参数验证

@@ -121,15 +121,24 @@ export default function RedeemCode() {
   });
 
   function copyKey(key: string) {
-    navigator.clipboard.writeText(key).then(() => {
-      message.success({
-        content: '复制成功',
-      })
-    }).catch(() => {
+    try {
+
+      navigator.clipboard.writeText(key).then(() => {
+        message.success({
+          content: '复制成功',
+        })
+      }).catch(() => {
+        message.error({
+          content: '复制失败:' + key,
+          duration: 10,
+        })
+      });
+    } catch (e) {
       message.error({
-        content: '复制失败',
+        content: '复制失败:' + key,
+        duration: 10,
       })
-    });
+    }
   }
 
   function removeRedeemCode(id: number) {
@@ -216,7 +225,13 @@ export default function RedeemCode() {
       </Header>
       <Table style={{
         marginTop: '1rem',
-      }} columns={columns} dataSource={data} rowSelection={rowSelection} pagination={{
+        height: '100%',
+      }} 
+      scroll={{
+        x: 'max-content',
+        y: 'calc(100vh - 350px)',
+      }}
+      columns={columns} dataSource={data} rowSelection={rowSelection} pagination={{
         total: total,
         pageSize: input.pageSize,
         defaultPageSize: input.page,

@@ -1,9 +1,17 @@
-﻿using Thor.Service.Options;
+﻿using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using Thor.Service.Domain.Core;
+using Thor.Service.Extensions;
+using Thor.Service.Options;
 
 namespace Thor.Service.Service;
 
-public sealed class TokenService(IServiceProvider serviceProvider, IServiceCache memoryCache)
-    : ApplicationService(serviceProvider)
+public sealed class TokenService(
+    IServiceProvider serviceProvider,
+    UserService userService,
+    JwtHelper jwtHelper,
+    ILogger<TokenService> logger)
+    : ApplicationService(serviceProvider), IScopeDependency
 {
     public async ValueTask CreateAsync(TokenInput input, string? createId = null)
     {
@@ -13,7 +21,7 @@ public sealed class TokenService(IServiceProvider serviceProvider, IServiceCache
 
         var token = Mapper.Map<Token>(input);
 
-        if (!createId.IsNullOrEmpty()) token.Creator = createId;
+        if (!string.IsNullOrEmpty(createId)) token.Creator = createId;
 
         token.Id = Guid.NewGuid().ToString("N");
 
@@ -58,6 +66,8 @@ public sealed class TokenService(IServiceProvider serviceProvider, IServiceCache
                     .SetProperty(x => x.RemainQuota, input.RemainQuota)
                     .SetProperty(x => x.UnlimitedQuota, input.UnlimitedQuota)
                     .SetProperty(x => x.UnlimitedExpired, input.UnlimitedExpired)
+                    .SetProperty(x => x.LimitModels, input.LimitModels)
+                    .SetProperty(x => x.WhiteIpList, input.WhiteIpList)
             );
 
         return result > 0;
@@ -77,17 +87,49 @@ public sealed class TokenService(IServiceProvider serviceProvider, IServiceCache
             .ExecuteUpdateAsync(x => x.SetProperty(x => x.Disabled, a => !a.Disabled));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void CheckModel(string model, Token? token, HttpContext context)
+    {
+        if (token == null) return;
+
+        if (token.LimitModels.Count(x => !string.IsNullOrEmpty(x)) > 0 && !token.LimitModels.Contains(model))
+        {
+            throw new Exception("当前 Token 无权访问该模型");
+        }
+
+        if (token.WhiteIpList.Count <= 0) return;
+
+        var ip = context.GetIpAddress();
+
+        if (string.IsNullOrEmpty(ip) || !token.WhiteIpList.Contains(ip))
+        {
+            throw new Exception("当前IP: " + ip + " 无权访问该模型");
+        }
+    }
+
     /// <summary>
     ///     校验Token 是否有效
     ///     检验账号额度是否足够
     /// </summary>
     /// <param name="context"></param>
+    /// <param name="value"></param>
     /// <returns></returns>
     /// <exception cref="UnauthorizedAccessException"></exception>
     /// <exception cref="InsufficientQuotaException"></exception>
-    public async ValueTask<(Token?, User)> CheckTokenAsync(HttpContext context)
+    public async ValueTask<(Token?, User)> CheckTokenAsync(HttpContext context, ModelManager value)
     {
         var key = context.Request.Headers.Authorization.ToString().Replace("Bearer ", "").Trim();
+
+        if (string.IsNullOrEmpty(key))
+        {
+            var protocol = context.Request.Headers.SecWebSocketProtocol.ToString().Split(",").Select(x => x.Trim());
+
+            var apiKey = protocol
+                .FirstOrDefault(x => x.StartsWith("openai-insecure-api-key.", StringComparison.OrdinalIgnoreCase))
+                ?.Replace("openai-insecure-api-key.", "");
+            if (!string.IsNullOrEmpty(apiKey))
+                key = apiKey;
+        }
 
         var requestQuota = SettingService.GetIntSetting(SettingExtensions.GeneralSetting.RequestQuota);
 
@@ -95,26 +137,36 @@ public sealed class TokenService(IServiceProvider serviceProvider, IServiceCache
 
         User? user;
         Token? token;
-        // su-则是用户token
-        if (key.StartsWith("su-"))
+        // sk-是用户创建的token，否则是用户的JWT
+        if (!key.StartsWith("sk-"))
         {
-            user = await memoryCache.GetAsync<User>(key);
-
-            if (user == null)
+            try
             {
+                var userDto = jwtHelper.GetUserFromToken(key);
+
+                if (userDto == null)
+                {
+                    context.Response.StatusCode = 401;
+                    throw new UnauthorizedAccessException();
+                }
+
+                user = await userService.GetAsync(userDto.Id).ConfigureAwait(false);
+                token = null;
+            }
+            catch (Exception e)
+            {
+                logger.LogError(e, "解析Token 失败");
                 context.Response.StatusCode = 401;
                 throw new UnauthorizedAccessException();
             }
-
-            user = await DbContext.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == user.Id);
-            token = null;
         }
         else
         {
-            token = await DbContext.Tokens.AsNoTracking().FirstOrDefaultAsync(x => x.Key == key);
+            token = await DbContext.Tokens.AsNoTracking().FirstOrDefaultAsync(x => x.Key == key && x.Disabled == false);
 
             if (token == null)
             {
+                logger.LogWarning("Token 不存在");
                 context.Response.StatusCode = 401;
                 throw new UnauthorizedAccessException();
             }
@@ -122,6 +174,7 @@ public sealed class TokenService(IServiceProvider serviceProvider, IServiceCache
             // token过期
             if (token.ExpiredTime < DateTimeOffset.Now)
             {
+                logger.LogWarning("Token 过期");
                 context.Response.StatusCode = 401;
                 throw new UnauthorizedAccessException();
             }
@@ -129,32 +182,83 @@ public sealed class TokenService(IServiceProvider serviceProvider, IServiceCache
             // 余额不足
             if (token is { UnlimitedQuota: false } && token.RemainQuota < requestQuota)
             {
+                logger.LogWarning("Token 额度不足");
                 context.Response.StatusCode = 402;
                 throw new InsufficientQuotaException("当前 Token 额度不足，请充值 Token 额度");
             }
 
-            user = await DbContext.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == token.Creator);
+            user = await userService.GetAsync(token.Creator).ConfigureAwait(false);
         }
 
         if (user == null)
         {
+            logger.LogWarning("用户不存在");
             context.Response.StatusCode = 401;
             throw new UnauthorizedAccessException();
         }
 
         if (user.IsDisabled)
         {
+            logger.LogWarning("用户已禁用");
             context.Response.StatusCode = 401;
             throw new UnauthorizedAccessException("账号已禁用");
         }
 
-        // 判断额度是否足够
-        if (user.ResidualCredit < requestQuota)
+        if (value.QuotaType == ModelQuotaType.ByCount)
         {
-            context.Response.StatusCode = 402;
-            throw new InsufficientQuotaException("额度不足");
+            if (user.ResidualCredit < value.PromptRate)
+            {
+                logger.LogWarning("用户额度不足");
+                context.Response.StatusCode = 402;
+                throw new InsufficientQuotaException("额度不足");
+            }
+            else
+            {
+                return (token, user);
+            }
+        }
+        else if ((user.ResidualCredit >= value.PromptRate) || user.ResidualCredit >= requestQuota)
+        {
+            return (token, user);
         }
 
-        return (token, user);
+        logger.LogWarning("用户额度不足");
+        context.Response.StatusCode = 402;
+        throw new InsufficientQuotaException("额度不足");
+    }
+
+    /// <summary>
+    /// 模型转换映射
+    /// </summary>
+    /// <returns></returns>
+    public static string ModelMap(string model)
+    {
+        if (ChatCoreOptions.ModelMapping?.Enable == true &&
+            ChatCoreOptions.ModelMapping.Models.TryGetValue(model, out var models) && models.Length > 0)
+        {
+            using var modelMap =
+                Activity.Current?.Source.StartActivity("模型映射转换");
+            // 随机字符串
+            // 所有权重值之和
+            var total = models.Sum(x => x.Order);
+
+            var value = Convert.ToInt32(Random.Shared.NextDouble() * total);
+
+            foreach (var chatChannel in models)
+            {
+                value -= chatChannel.Order;
+                if (value <= 0)
+                {
+                    modelMap?.SetTag("Model", chatChannel.Model);
+                    return chatChannel.Model;
+                }
+            }
+
+            modelMap?.SetTag("Model", models.LastOrDefault()?.Model ?? model);
+
+            return models.LastOrDefault()?.Model ?? model;
+        }
+
+        return model;
     }
 }
